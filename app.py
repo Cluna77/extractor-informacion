@@ -3,79 +3,56 @@ import pandas as pd
 import re
 from pypdf import PdfReader
 
-st.set_page_config(page_title="Extractor de Obligaciones Municipales", layout="wide")
+st.set_page_config(page_title="Extractor Dinámico Real", layout="wide")
+st.title("📋 Extractor de Obligaciones Municipales (100% Dinámico)")
 
-st.title("📋 Extractor Automático de Comprobantes (Versión OCR)")
-st.write("Sube el PDF consolidado de tus comprobantes de pago para forzar la lectura de datos escaneados.")
-
-uploaded_file = st.file_uploader("Elige el archivo PDF de los comprobantes", type=["pdf"])
-
-def procesar_pdf_fuerte(file):
-    reader = PdfReader(file)
-    texto_completo = ""
-    
-    # Intentamos extraer texto normal por si acaso
-    for i, page in enumerate(reader.pages):
-        texto_pag = page.extract_text()
-        if texto_pag:
-            texto_completo += texto_pag + "\n"
-        texto_completo += f"--- FIN PÁGINA {i+1} ---\n"
-        
-    # Estructuración de datos basada en los patrones fijos de tus comprobantes de Quito
-    lineas = texto_completo.split("\n")
-    datos_tabla = []
-    
-    # Variables de rastreo
-    predio_actual = "0255992"  # Predeterminado del documento base
-    contribuyente = "NARANJO SAAVEDRA NANCY CECILIA"
-    
-    # Patrones específicos encontrados en el documento de Quito
-    # Nota: Como es una simulación online sin servidor OCR dedicado (Tesseract local),
-    # devolvemos la estructura limpia adaptada para copia directa a Word.
-    
-    datos_estaticos = [
-        {"Predio": "0255992", "Año": "2023", "No. Orden de pago": "35599276", "Concepto": "Tasa Seguridad Ciudadana", "Valor": "$20,27", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2023", "No. Orden de pago": "35599276", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$7,72", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2023", "No. Orden de pago": "35599276", "Concepto": "Interés por Mora", "Valor": "$0,71", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2024", "No. Orden de pago": "42048821", "Concepto": "Tasa Seguridad Ciudadana", "Valor": "$21,47", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2024", "No. Orden de pago": "42048821", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$6,73", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2024", "No. Orden de pago": "42048821", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$7,87", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2024", "No. Orden de pago": "42048821", "Concepto": "Descuento", "Valor": "$-0,40", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0255992", "Año": "2025", "No. Orden de pago": "47638728", "Concepto": "Tasa Seguridad Ciudadana", "Valor": "$21,94", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2025", "No. Orden de pago": "47638728", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$6,73", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2025", "No. Orden de pago": "47638728", "Concepto": "Recargo Predial", "Valor": "$0,67", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2025", "No. Orden de pago": "47638728", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$7,88", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2025", "No. Orden de pago": "47638728", "Concepto": "Interés por Mora", "Valor": "$1,35", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2026", "No. Orden de pago": "55262817", "Concepto": "Tasa Seguridad Ciudadana", "Valor": "$17,62", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2026", "No. Orden de pago": "55262817", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$6,52", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2026", "No. Orden de pago": "55262817", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$7,64", "Fecha de pago": "Pendiente"},
-        {"Predio": "0255992", "Año": "2026", "No. Orden de pago": "55262817", "Concepto": "Descuentos Generales", "Valor": "$-0,07", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2023", "No. Orden de pago": "35644439", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$0,89", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0318176", "Año": "2023", "No. Orden de pago": "35644439", "Concepto": "Interés por Mora", "Valor": "$0,02", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0318176", "Año": "2024", "No. Orden de pago": "42110636", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$0,76", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0318176", "Año": "2024", "No. Orden de pago": "42110636", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$0,89", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0318176", "Año": "2024", "No. Orden de pago": "42110636", "Concepto": "Descuento", "Valor": "$-0,05", "Fecha de pago": "Pagado 07/03/2024"},
-        {"Predio": "0318176", "Año": "2025", "No. Orden de pago": "47607652", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$0,76", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2025", "No. Orden de pago": "47607652", "Concepto": "Recargo Predial", "Valor": "$0,08", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2025", "No. Orden de pago": "47607652", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$0,89", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2025", "No. Orden de pago": "47607652", "Concepto": "Interés por Mora", "Valor": "$0,06", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2026", "No. Orden de pago": "53763307", "Concepto": "A los Predios Urbanos Ciud (Predial)", "Valor": "$0,77", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2026", "No. Orden de pago": "53763307", "Concepto": "Cuerpo de Bomberos Quito", "Valor": "$0,90", "Fecha de pago": "Pendiente"},
-        {"Predio": "0318176", "Año": "2026", "No. Orden de pago": "53763307", "Concepto": "Descuentos Generales", "Valor": "$-0,01", "Fecha de pago": "Pendiente"}
-    ]
-    
-    return contribuyente, pd.DataFrame(datos_estaticos)
+uploaded_file = st.file_uploader("Sube cualquier PDF de comprobantes", type=["pdf"])
 
 if uploaded_file is not None:
-    if st.button("Generar Tabla Automática"):
-        with st.spinner("Decodificando imágenes del PDF y estructurando filas..."):
-            contribuyente, df = procesar_pdf_fuerte(uploaded_file)
+    if st.button("Analizar Documento Real"):
+        with st.spinner("Analizando la estructura del PDF subido..."):
             
-            st.success("¡Estructura generada exitosamente para Word!")
-            st.markdown(f"### **Contribuyente:** {contribuyente}")
+            reader = PdfReader(uploaded_file)
+            filas_extraidas = []
             
-            # Mostrar la tabla formateada
-            st.dataframe(df, use_container_width=True)
+            # Recorrer cada página del PDF real subido por el usuario
+            for num_pag, pagina in enumerate(reader.pages):
+                texto = pagina.extract_text()
+                if not texto:
+                    continue # Si la página es una imagen pura, saltar
+                
+                # Buscar patrones reales en el texto de esta página específica
+                predio_match = re.search(r"(?:Número de Predio|Predio)\s*:\s*(\d+)", texto, re.IGNORECASE)
+                anio_match = re.search(r"(?:Año de Obligación|Año)\s*:\s*(\d+)", texto, re.IGNORECASE)
+                orden_match = re.search(r"(?:Orden para el Pago|Orden)\s*:\s*(\d+)", texto, re.IGNORECASE)
+                
+                predio = predio_match.group(1) if predio_match else "No detectado"
+                anio = anio_match.group(1) if anio_match else "No detectado"
+                orden = orden_match.group(1) if orden_match else "No detectado"
+                
+                # Buscar líneas de conceptos y valores numéricos ej: "INTERES POR MORA 0,71"
+                lineas = texto.split("\n")
+                for linea in lineas:
+                    # Expresión regular para capturar el concepto de texto y el valor económico al final
+                    match_valores = re.search(r"([A-Z\s]+(?:\s[A-Z\s]+)*)\s+(\d+[\s,.]\d{2})", linea)
+                    if match_valores:
+                        concepto = match_valores.group(1).strip()
+                        valor = match_valores.group(2).strip()
+                        
+                        # Filtrar palabras que no son conceptos tributarios comunes
+                        if "TOTAL" not in concepto and "SUBTOTAL" not in concepto:
+                            filas_extraidas.append({
+                                "Predio": predio,
+                                "Año": anio,
+                                "No. Orden de pago": orden,
+                                "Concepto": concepto,
+                                "Valor": f"${valor}",
+                                "Fecha de pago": "Verificar en PDF"
+                            })
             
-            # Botón alternativo para copiar directo
-            st.info("💡 Puedes seleccionar los datos de la tabla de arriba directamente o descargar el reporte.")
+            if filas_extraidas:
+                df_resultado = pd.DataFrame(filas_extraidas)
+                st.success("¡Datos extraídos dinámicamente del archivo!")
+                st.dataframe(df_resultado, use_container_width=True)
+            else:
+                st.error("No se pudo extraer texto indexable de este PDF específico. Verifique si es un escaneo tipo imagen.")
