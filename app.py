@@ -1,58 +1,61 @@
 import streamlit as st
 import pandas as pd
-import re
+from google import genai
+from google.genai import types
 from pypdf import PdfReader
 
-st.set_page_config(page_title="Extractor Dinámico Real", layout="wide")
-st.title("📋 Extractor de Obligaciones Municipales (100% Dinámico)")
+st.set_page_config(page_title="Extractor IA Multimodal", layout="wide")
+st.title("🤖 Extractor de Obligaciones Municipales con IA")
+st.write("Esta versión utiliza Inteligencia Artificial para leer dinámicamente cualquier PDF, incluso si es un escaneo o imagen.")
+
+# Entrada para pegar la API Key de forma segura en la interfaz
+api_key = st.sidebar.text_input("Ingresa tu Gemini API Key:", type="password")
 
 uploaded_file = st.file_uploader("Sube cualquier PDF de comprobantes", type=["pdf"])
 
 if uploaded_file is not None:
-    if st.button("Analizar Documento Real"):
-        with st.spinner("Analizando la estructura del PDF subido..."):
-            
-            reader = PdfReader(uploaded_file)
-            filas_extraidas = []
-            
-            # Recorrer cada página del PDF real subido por el usuario
-            for num_pag, pagina in enumerate(reader.pages):
-                texto = pagina.extract_text()
-                if not texto:
-                    continue # Si la página es una imagen pura, saltar
-                
-                # Buscar patrones reales en el texto de esta página específica
-                predio_match = re.search(r"(?:Número de Predio|Predio)\s*:\s*(\d+)", texto, re.IGNORECASE)
-                anio_match = re.search(r"(?:Año de Obligación|Año)\s*:\s*(\d+)", texto, re.IGNORECASE)
-                orden_match = re.search(r"(?:Orden para el Pago|Orden)\s*:\s*(\d+)", texto, re.IGNORECASE)
-                
-                predio = predio_match.group(1) if predio_match else "No detectado"
-                anio = anio_match.group(1) if anio_match else "No detectado"
-                orden = orden_match.group(1) if orden_match else "No detectado"
-                
-                # Buscar líneas de conceptos y valores numéricos ej: "INTERES POR MORA 0,71"
-                lineas = texto.split("\n")
-                for linea in lineas:
-                    # Expresión regular para capturar el concepto de texto y el valor económico al final
-                    match_valores = re.search(r"([A-Z\s]+(?:\s[A-Z\s]+)*)\s+(\d+[\s,.]\d{2})", linea)
-                    if match_valores:
-                        concepto = match_valores.group(1).strip()
-                        valor = match_valores.group(2).strip()
-                        
-                        # Filtrar palabras que no son conceptos tributarios comunes
-                        if "TOTAL" not in concepto and "SUBTOTAL" not in concepto:
-                            filas_extraidas.append({
-                                "Predio": predio,
-                                "Año": anio,
-                                "No. Orden de pago": orden,
-                                "Concepto": concepto,
-                                "Valor": f"${valor}",
-                                "Fecha de pago": "Verificar en PDF"
-                            })
-            
-            if filas_extraidas:
-                df_resultado = pd.DataFrame(filas_extraidas)
-                st.success("¡Datos extraídos dinámicamente del archivo!")
-                st.dataframe(df_resultado, use_container_width=True)
-            else:
-                st.error("No se pudo extraer texto indexable de este PDF específico. Verifique si es un escaneo tipo imagen.")
+    if st.button("Analizar con Inteligencia Artificial"):
+        if not api_key:
+            st.error("Por favor, ingresa tu API Key de Gemini en la barra lateral izquierda para activar la IA.")
+        else:
+            with st.spinner("La IA está leyendo y procesando visualmente el documento..."):
+                try:
+                    # Leer los bytes del archivo para enviárselos a la IA
+                    bytes_data = uploaded_file.getvalue()
+                    
+                    # Inicializar el cliente de IA de Google
+                    client = genai.Client(api_key=api_key)
+                    
+                    # Instrucciones precisas para que la IA extraiga los datos con el formato que necesitas
+                    prompt = """
+                    Analiza el documento adjunto (comprobantes de pago u obligaciones municipales). 
+                    Extrae absolutamente todos los conceptos de cobro detallados por cada año y número de predio.
+                    Devuelve la información estrictamente en formato de tabla Markdown con las siguientes columnas:
+                    | Predio | Año | No. Orden de pago | Concepto | Valor | Fecha de pago |
+                    
+                    Reglas:
+                    1. Identifica el 'Número de Predio' para cada bloque de obligaciones.
+                    2. Si un concepto dice 'Descuento' o similar, pon el valor con signo negativo (ej: -$0.40).
+                    3. Si el documento indica 'Fecha Pago', colócala en formato DD/MM/AAAA. Si dice 'Obligaciones por cancelar' o no registra fecha de pago, pon 'Pendiente'.
+                    4. No agregues introducciones ni textos extra, solo entrega la tabla Markdown directa.
+                    """
+                    
+                    # Llamar al modelo capaz de procesar archivos/documentos (Gemini 2.5 Flash)
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=[
+                            types.Part.from_bytes(
+                                data=bytes_data,
+                                mime_type='application/pdf',
+                            ),
+                            prompt
+                        ]
+                    )
+                    
+                    st.success("¡Análisis de IA completado con éxito!")
+                    
+                    # Mostrar la tabla que generó la IA
+                    st.markdown(response.text)
+                    
+                except Exception as e:
+                    st.error(f"Ocurrió un error al conectar con la IA: {e}")
